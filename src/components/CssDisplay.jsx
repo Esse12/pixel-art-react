@@ -4,17 +4,19 @@ import { generatePixelDrawCss } from '../utils/cssParse';
 
 const CssDisplay = (props) => {
   const generateCss = () => {
-    const { activeFrame, columns, rows, cellSize } = props;
+    const {
+      activeFrame,
+      columns,
+      rows,
+      cellSize
+    } = props;
     let cssString = generatePixelDrawCss(
-      activeFrame, columns, rows, cellSize, 'string'
+      activeFrame,
+      columns,
+      cellSize,
+      'string'
     );
-
-    if (cssString) {
-      cssString = `box-shadow: ${cssString}; `;
-      cssString += `height: ${cellSize}px; width: ${cellSize}px;`;
-    }
-
-    return <div>{cssString}</div>;
+    return <div>{cssString || ''}</div>;
   };
 
   return (
@@ -35,7 +37,5 @@ function mapStateToProps(state) {
   };
 }
 
-const CssDisplayContainer = connect(
-  mapStateToProps
-)(CssDisplay);
+const CssDisplayContainer = connect(mapStateToProps)(CssDisplay);
 export default CssDisplayContainer;

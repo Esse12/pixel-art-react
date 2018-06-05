@@ -2,17 +2,16 @@ import { List, Map } from 'immutable';
 import {
   createGrid, resizeGrid, createPalette, resetIntervals, setGridCellValue,
   checkColorInPalette, addColorToLastCellInPalette, getPositionFirstMatchInPalette,
-  applyBucket, cloneGrid
+  applyBucket, cloneGrid, GRID_INITIAL_COLOR
 } from './reducerHelpers';
+import * as types from '../actions/actionTypes';
 
-const GRID_INITIAL_COLOR = '#313131';
-
-function setInitialState(state) {
+function setInitialState(state, options = {}) {
   const cellSize = 10;
-  const columns = 20;
-  const rows = 20;
+  const columns = options.columns || 20;
+  const rows = options.rows || 20;
   const currentColor = { color: '#000000', position: 0 };
-  const frame = createGrid(columns * rows, GRID_INITIAL_COLOR, 100);
+  const frame = createGrid(columns * rows, 100);
   const paletteGrid = createPalette();
 
   const initialState = {
@@ -22,7 +21,6 @@ function setInitialState(state) {
     columns,
     rows,
     currentColor,
-    initialColor: GRID_INITIAL_COLOR,
     eraserOn: false,
     eyedropperOn: false,
     colorPickerOn: false,
@@ -42,22 +40,17 @@ function changeDimensions(state, gridProperty, behaviour) {
   let newFrames = List();
 
   for (let i = 0; i < framesCount; i++) {
-    newFrames = newFrames.push(
-      Map(
-        {
-          grid:
-            resizeGrid(
-              state.getIn(['frames', i, 'grid']),
-              gridProperty,
-              behaviour,
-              GRID_INITIAL_COLOR,
-              { columns: state.get('columns'), rows: state.get('rows') }
-            ),
-          interval: state.getIn(['frames', i, 'interval']),
-          key: state.getIn(['frames', i, 'key'])
-        }
-      )
-    );
+    newFrames = newFrames.push(Map({
+      grid:
+        resizeGrid(
+          state.getIn(['frames', i, 'grid']),
+          gridProperty,
+          behaviour,
+          { columns: state.get('columns'), rows: state.get('rows') }
+        ),
+      interval: state.getIn(['frames', i, 'interval']),
+      key: state.getIn(['frames', i, 'key'])
+    }));
   }
 
   const newValues = {
@@ -82,7 +75,8 @@ function setColorSelected(state, newColorSelected, positionInPalette) {
   if (!checkColorInPalette(paletteGridData, newColorSelected)) {
     // If there is no newColorSelected in the palette it will create one
     paletteGridData = addColorToLastCellInPalette(
-      paletteGridData, newColorSelected
+      paletteGridData,
+      newColorSelected
     );
     newColor.position = paletteGridData.size - 1;
   } else if (positionInPalette === null) {
@@ -109,13 +103,15 @@ function setCustomColor(state, customColor) {
   if (!checkColorInPalette(paletteGridData, currentColor.get('color'))) {
     // If there is no colorSelected in the palette it will create one
     newState.paletteGridData = addColorToLastCellInPalette(
-      paletteGridData, customColor
+      paletteGridData,
+      customColor
     );
     newState.currentColor.position = newState.paletteGridData.size - 1;
   } else {
     // There is a color selected in the palette
     newState.paletteGridData = paletteGridData.set(
-      currentColor.get('position'), Map({
+      currentColor.get('position'),
+      Map({
         color: customColor, id: currentColor.get('color')
       })
     );
@@ -131,9 +127,7 @@ function drawCell(state, id) {
 
   if (bucketOn || eyedropperOn) {
     const activeFrameIndex = state.get('activeFrameIndex');
-    const cellColor = state.getIn(
-      ['frames', activeFrameIndex, 'grid', id, 'color']
-    );
+    const cellColor = state.getIn(['frames', activeFrameIndex, 'grid', id]) || GRID_INITIAL_COLOR;
 
     if (eyedropperOn) {
       return setColorSelected(state, cellColor, null);
@@ -142,11 +136,8 @@ function drawCell(state, id) {
     return applyBucket(state, activeFrameIndex, id, cellColor);
   }
   // eraserOn or regular cell paint
-  const used = !eraserOn;
-  const color = eraserOn ?
-  state.get('initialColor') :
-  state.get('currentColor').get('color');
-  return setGridCellValue(state, color, used, id);
+  const color = eraserOn ? '' : state.get('currentColor').get('color');
+  return setGridCellValue(state, color, id);
 }
 
 function setDrawing(state, frames, paletteGridData, cellSize, columns, rows) {
@@ -205,7 +196,6 @@ function resetGrid(state, columns, rows, activeFrameIndex) {
   const currentInterval = state.get('frames').get(activeFrameIndex).get('interval');
   const newGrid = createGrid(
     parseInt(columns, 10) * parseInt(rows, 10),
-    GRID_INITIAL_COLOR,
     currentInterval
   );
 
@@ -235,7 +225,6 @@ function changeActiveFrame(state, frameIndex) {
 function createNewFrame(state) {
   const newFrames = state.get('frames').push(createGrid(
     parseInt(state.get('columns'), 10) * parseInt(state.get('rows'), 10),
-    GRID_INITIAL_COLOR,
     100
   ));
   return state.merge({
@@ -269,7 +258,9 @@ function duplicateFrame(state, frameId) {
   const prevFrame = frames.get(frameId);
   return state.merge({
     frames: resetIntervals(frames.splice(
-      frameId, 0, cloneGrid(prevFrame.get('grid'), prevFrame.get('interval'))
+      frameId,
+      0,
+      cloneGrid(prevFrame.get('grid'), prevFrame.get('interval'))
     )),
     activeFrameIndex: frameId + 1
   });
@@ -284,62 +275,66 @@ function changeFrameInterval(state, frameIndex, interval) {
     frames: state.get('frames').updateIn(
       [frameIndex, 'interval'],
       () => interval
-     )
+    )
   });
 }
 
 export default function (state = Map(), action) {
   switch (action.type) {
-    case 'SET_INITIAL_STATE':
-      return setInitialState(state);
-    case 'CHANGE_DIMENSIONS':
+    case types.SET_INITIAL_STATE:
+      return setInitialState(state, action.options);
+    case types.CHANGE_DIMENSIONS:
       return changeDimensions(state, action.gridProperty, action.behaviour);
-    case 'SET_COLOR_SELECTED':
+    case types.SET_COLOR_SELECTED:
       return setColorSelected(
-        state, action.newColorSelected, action.paletteColorPosition
+        state,
+        action.newColorSelected,
+        action.paletteColorPosition
       );
-    case 'SET_CUSTOM_COLOR':
+    case types.SET_CUSTOM_COLOR:
       return setCustomColor(state, action.customColor);
-    case 'DRAW_CELL':
+    case types.DRAW_CELL:
       return drawCell(state, action.id);
-    case 'SET_DRAWING':
+    case types.SET_DRAWING:
       return setDrawing(
         state, action.frames, action.paletteGridData,
-        action.cellSize, action.columns, action.rows);
-    case 'SET_ERASER':
+        action.cellSize, action.columns, action.rows
+      );
+    case types.SET_ERASER:
       return setEraser(state);
-    case 'SET_BUCKET':
+    case types.SET_BUCKET:
       return setBucket(state);
-    case 'SET_EYEDROPPER':
+    case types.SET_EYEDROPPER:
       return setEyedropper(state);
-    case 'SET_COLOR_PICKER':
+    case types.SET_COLOR_PICKER:
       return setColorPicker(state);
-    case 'SET_CELL_SIZE':
+    case types.SET_CELL_SIZE:
       return setCellSize(state, action.cellSize);
-    case 'SET_RESET_GRID':
+    case types.SET_RESET_GRID:
       return resetGrid(
         state, action.columns, action.rows,
-        action.activeFrameIndex);
-    case 'SHOW_SPINNER':
+        action.activeFrameIndex
+      );
+    case types.SHOW_SPINNER:
       return showSpinner(state);
-    case 'HIDE_SPINNER':
+    case types.HIDE_SPINNER:
       return hideSpinner(state);
-    case 'SEND_NOTIFICATION':
+    case types.SEND_NOTIFICATION:
       return sendNotification(state, action.message);
-    case 'CHANGE_ACTIVE_FRAME':
+    case types.CHANGE_ACTIVE_FRAME:
       return changeActiveFrame(state, action.frameIndex);
-    case 'CREATE_NEW_FRAME':
+    case types.CREATE_NEW_FRAME:
       return createNewFrame(state);
-    case 'DELETE_FRAME':
+    case types.DELETE_FRAME:
       return deleteFrame(state, action.frameId);
-    case 'DUPLICATE_FRAME':
+    case types.DUPLICATE_FRAME:
       return duplicateFrame(state, action.frameId);
-    case 'SET_DURATION':
+    case types.SET_DURATION:
       return setDuration(state, action.duration);
-    case 'CHANGE_FRAME_INTERVAL':
+    case types.CHANGE_FRAME_INTERVAL:
       return changeFrameInterval(state, action.frameIndex, action.interval);
-    case 'NEW_PROJECT':
-      return setInitialState(state);
+    case types.NEW_PROJECT:
+      return setInitialState(state, action.options);
     default:
   }
   return state;

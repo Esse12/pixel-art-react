@@ -1,14 +1,14 @@
 import gm from 'gm';
 import fs from 'fs';
 
-const exec = require('child_process').exec;
+const { exec } = require('child_process');
 
 /**
  * Remove files from a given path array
  */
 function removeFiles(paths) {
   for (let i = 0; i < paths.length; i++) {
-    fs.unlink(paths[i]);
+    fs.unlink(paths[i], () => {});
   }
 }
 
@@ -16,14 +16,11 @@ function removeFiles(paths) {
  * Draw a single frame from CSS exported data
  */
 function generateFrame(frameData, width, height, opacity, pixelSize) {
-  const frame = frameData.map(
-    elem =>
-      ({
-        x: elem[0],
-        y: elem[1],
-        color: elem[3]
-      })
-  );
+  const frame = frameData.map(elem => ({
+    x: elem.x,
+    y: elem.y,
+    color: elem.color
+  }));
 
   const BGCOLOR = '#000000';
   const FILLCOLOR = (
@@ -38,7 +35,10 @@ function generateFrame(frameData, width, height, opacity, pixelSize) {
   for (let i = 0; i < frame.length; i++) {
     const aux = frame[i];
     gmImg.fill(aux.color).drawRectangle(
-      aux.x - pixelSize, aux.y - pixelSize, aux.x, aux.y
+      aux.x - pixelSize,
+      aux.y - pixelSize,
+      aux.x,
+      aux.y
     );
   }
 
@@ -59,7 +59,7 @@ function createFrameImages(cssData, width, height, opacity, splittedPath) {
         (err) => {
           if (err) {
             console.log(err);
-            reject(`Rejected ${frameFilePath}`);
+            reject(new Error(`Rejected ${frameFilePath}`));
           } else {
             fulfill(`Fulfilled ${frameFilePath}`);
           }
@@ -82,17 +82,23 @@ export function drawFrame(data, path, callback) {
   const width = cssData.cols * cssData.pixelSize;
   const height = cssData.rows * cssData.pixelSize;
   const opacity = 0;
+  const pathExtension = `${path}.png`;
+  const frameFileName = pathExtension.split('images/tmp/')[1];
   const gmImg = generateFrame(
-    cssData.drawingData, width, height, opacity, cssData.pixelSize
+    cssData.drawingData,
+    width,
+    height,
+    opacity,
+    cssData.pixelSize
   );
 
   gmImg.write(
-    path,
+    pathExtension,
     (err) => {
       if (err) {
         console.log(err);
       }
-      callback();
+      callback(frameFileName);
     }
   );
 }
@@ -105,18 +111,16 @@ export function drawGif(data, path, transparent, callback) {
   const width = cssData.cols * cssData.pixelSize;
   const height = cssData.rows * cssData.pixelSize;
   const opacity = 0;
-  const splittedPath = path.split('.');
+  const splittedPath = [path, 'gif'];
 
-  const framesFilesData = createFrameImages(
-    cssData, width, height, opacity, splittedPath
-  );
+  const framesFilesData = createFrameImages(cssData, width, height, opacity, splittedPath);
 
   Promise.all(framesFilesData.promises).then(() => {
     const paths = framesFilesData.framePaths;
     const gifAnimatedPath = ` ${splittedPath[0]}-final.${splittedPath[1]}`;
     const gifFileName = gifAnimatedPath.split('images/tmp/')[1];
-    const duration = cssData.animationInfo.duration;
-    const intervals = cssData.animationInfo.intervals;
+    const { duration } = cssData.animationInfo;
+    const { intervals } = cssData.animationInfo;
     const opacityOptions = transparent ? ' ' : ' -background white -alpha remove';
 
     let creatingGifCommand = 'convert -dispose previous -loop 0';
@@ -162,9 +166,13 @@ export function drawSpritesheet(data, path, callback) {
   const width = cssData.cols * cssData.pixelSize;
   const height = cssData.rows * cssData.pixelSize;
   const opacity = 0;
-  const splittedPath = path.split('.');
+  const splittedPath = [path, 'png'];
   const framesFilesData = createFrameImages(
-    cssData, width, height, opacity, splittedPath
+    cssData,
+    width,
+    height,
+    opacity,
+    splittedPath
   );
 
   Promise.all(framesFilesData.promises).then(() => {

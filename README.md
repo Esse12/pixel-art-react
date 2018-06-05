@@ -24,7 +24,7 @@ Check the results of this simple project:
 
 ![](screenshots/animation-cat.gif)
 
-##### See it live at [pixelart-to-css-react](http://pixelart.jvrpath.com/)
+##### See it live at [pixelartcss](https://www.pixelartcss.com/)
 
 ## Example
 

@@ -13,6 +13,7 @@ import { OAuth } from 'oauth';
 import session from 'express-session';
 import React from 'react';
 import { createStore } from 'redux';
+import { SET_INITIAL_STATE, SHOW_SPINNER } from '../store/actions/actionTypes';
 import reducer from '../store/reducers/reducer';
 import pkgjson from '../../package.json';
 import {
@@ -49,19 +50,28 @@ const oa = new OAuth(
   'HMAC-SHA1'
 );
 
+app.use((req, res, next) => {
+  const host = req.get('Host');
+  if (host === configData.LEGACY_DOMAIN) {
+    return res.redirect(301, configData.ACTIVE_DOMAIN);
+  }
+  if (req.headers['x-forwarded-proto'] !== 'https' && ENV !== 'development') {
+    return res.redirect(301, configData.ACTIVE_DOMAIN);
+  }
+  return next();
+});
+
 app.set('views', `${__dirname}/../views`);
 app.set('view engine', 'pug');
 app.use(express.static(`${__dirname}/../../deploy`));
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
-app.use(session(
-  {
-    secret: configData.EXPRESS_SESSION_SECRET,
-    resave: true,
-    saveUninitialized: true
-  }
-));
+app.use(session({
+  secret: configData.EXPRESS_SESSION_SECRET,
+  resave: true,
+  saveUninitialized: true
+}));
 
 /**
  * Redux helper functions
@@ -74,24 +84,23 @@ function handleRender(req, res) {
 
   // Dispatch initial state
   store.dispatch({
-    type: 'SET_INITIAL_STATE',
+    type: SET_INITIAL_STATE,
     state: {}
   });
   store.dispatch({
-    type: 'SHOW_SPINNER'
+    type: SHOW_SPINNER
   });
 
   // Render the component to a string
-  const html = renderToString(
-    <Root store={store} />
-  );
+  const html = renderToString(<Root store={store} />);
 
   const initialState = store.getState();
 
   // Send the rendered page back to the client
   res.render('index.pug', {
     reactOutput: html,
-    initialState: JSON.stringify(initialState)
+    initialState: JSON.stringify(initialState),
+    googleAnalyticsId: configData.GOOGLE_ANALYTICS_ID
   });
 }
 
@@ -145,9 +154,7 @@ app.post('/auth/twitter', (req, res) => {
         request.session.cssData = request.body;
 
         res.contentType('application/json');
-        const data = JSON.stringify(
-          `https://twitter.com/oauth/authenticate?oauth_token=${oauthToken}`
-        );
+        const data = JSON.stringify(`https://twitter.com/oauth/authenticate?oauth_token=${oauthToken}`);
         res.header('Content-Length', data.length);
         res.end(data);
       } catch (e) {
@@ -168,13 +175,7 @@ app.get('/auth/twitter/callback', (req, res, next) => {
           res.send('auth twitter callback: error');
         } else {
           const request = req;
-
-          let suffix = '.png';
-          if (request.session.cssData.type === 'animation') {
-            suffix = '.gif';
-          }
-
-          const randomName = temp.path({ suffix });
+          const randomName = temp.path();
           const imgPath = `images${randomName}`;
           const client = new Twitter({
             consumer_key: configData.TWITTER_CONSUMER_KEY,
@@ -198,8 +199,8 @@ app.get('/auth/twitter/callback', (req, res, next) => {
               });
               break;
             default:
-              drawFrame(request.session.cssData, imgPath, () => {
-                tweetWithMedia(client, request, res, imgPath);
+              drawFrame(request.session.cssData, imgPath, (singleFramePath) => {
+                tweetWithMedia(client, request, res, singleFramePath);
               });
           }
         }
@@ -215,12 +216,7 @@ app.post('/auth/download', (req, res) => {
     const requestBody = req.body;
     requestBody.drawingData = JSON.parse(requestBody.drawingData);
 
-    let suffix = '.png';
-    if (requestBody.type === 'animation') {
-      suffix = '.gif';
-    }
-
-    const randomName = temp.path({ suffix });
+    const randomName = temp.path();
     const imgPath = `images${randomName}`;
 
     switch (requestBody.type) {
@@ -235,8 +231,8 @@ app.post('/auth/download', (req, res) => {
         });
         break;
       default:
-        drawFrame(requestBody, imgPath, () => {
-          res.send({ fileUrl: `/download${randomName}` });
+        drawFrame(requestBody, imgPath, (singleFramePath) => {
+          res.send({ fileUrl: `/download/tmp/${singleFramePath}` });
         });
     }
   } catch (e) {
@@ -256,12 +252,13 @@ app.get('/download/tmp/:filename', (req, res) => {
     hadError = true;
   });
   stream.on('close', () => {
-    if (!hadError) fs.unlink(filePath);
+    if (!hadError) fs.unlink(filePath, () => {});
   });
 });
 
 app.listen(process.env.PORT || PORTSERVER, () => {
   console.log(
     'Express server listening on port %d in %s mode',
-    process.env.PORT || PORTSERVER, app.settings.env);
+    process.env.PORT || PORTSERVER, app.settings.env
+  );
 });

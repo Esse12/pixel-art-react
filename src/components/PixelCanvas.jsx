@@ -5,14 +5,11 @@ import * as actionCreators from '../store/actions/actionCreators';
 import GridWrapper from './GridWrapper';
 
 const PixelCanvas = (props) => {
-  const cells = props.activeFrame.get('grid').map((currentCell, i) => {
-    const color = currentCell.get('color');
-    return {
-      id: i,
-      width: 100 / props.columns,
-      color,
-    };
-  });
+  const cells = props.activeFrame.get('grid').map((color, i) => ({
+    id: i,
+    width: 100 / props.columns,
+    color
+  }));
 
   const onCellEvent = id => props.actions.drawCell(id);
 
